@@ -1,0 +1,82 @@
+name: Build Windows MSI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build-windows:
+    runs-on: windows-2025
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.10.2'
+          arch: 'win64_msvc2022_64'
+          cache: true
+
+      - name: Install WiX
+        shell: pwsh
+        run: |
+          choco install wixtoolset -y --no-progress
+
+      - name: Download sound fonts
+        shell: bash
+        run: |
+          mkdir -p share/sound
+          cd share/sound
+          curl -fsSL -o "MS Basic.sf3" "https://drumbear.cn/downloads/soundfonts/MS%20Basic.sf3"
+          curl -fsSL -o "FluidR3_GM.sf2" "https://drumbear.cn/downloads/soundfonts/FluidR3_GM.sf2"
+          curl -fsSL -o "FluidR3Mono_GM.sf3" "https://drumbear.cn/downloads/soundfonts/FluidR3Mono_GM.sf3"
+
+      - name: Download FFmpeg DLLs
+        shell: bash
+        run: |
+          mkdir -p buildscripts/packaging/Windows/ffmpeg
+          cd buildscripts/packaging/Windows/ffmpeg
+          for f in avcodec-62.dll avformat-62.dll avutil-60.dll swresample-6.dll swscale-9.dll; do
+            curl -fsSL -o "$f" "https://drumbear.cn/downloads/ffmpeg/$f"
+          done
+
+      - name: Configure
+        shell: bash
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR/lib/cmake" \
+            -DCMAKE_INSTALL_PREFIX=install \
+            -DLIB_ARCH=x86_64 \
+            -DMUE_RUN_WINDEPLOYQT=ON \
+            -DMUE_WINDEPLOY_QML_DIR="$(pwd)/buildscripts/packaging/Windows/deploy-qml" \
+            -DCPACK_WIX_ROOT="C:/Program Files (x86)/WiX Toolset v3.11"
+
+      - name: Build
+        shell: bash
+        run: |
+          cmake --build build --target DBScore -- -j 4
+
+      - name: Install
+        shell: bash
+        run: |
+          cmake --install build
+
+      - name: Package MSI
+        shell: bash
+        run: |
+          cd build
+          cpack -G WIX -C Release
+
+      - name: Upload MSI
+        uses: actions/upload-artifact@v4
+        with:
+          name: guyuexiong-studio-windows
+          path: |
+            build/DBStudio-*.msi
+          if-no-files-found: error

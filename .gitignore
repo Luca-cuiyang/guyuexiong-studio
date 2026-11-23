@@ -93,6 +93,11 @@ src/braille/thirdparty/liblouis/liblouis/liblouis.h
 # Windows FFmpeg DLLs (fetched by the packaging workflow)
 /buildscripts/packaging/Windows/ffmpeg/*.dll
 
+# GitHub Actions workflows (a `build-*` rule above would otherwise ignore them)
+!/.github/
+!/.github/workflows/
+!/.github/workflows/*
+
 # CMake User presets
 CMakeUserPresets.json
 
