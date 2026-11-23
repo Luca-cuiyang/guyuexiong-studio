@@ -1,0 +1,132 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * MuseScore-Studio-CLA-applies
+ *
+ * MuseScore Studio
+ * Music Composition & Notation
+ *
+ * Copyright (C) 2025 MuseScore Limited and others
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+#include "welcomedialogmodel.h"
+
+#include "translation.h"
+#include "log.h"
+
+using namespace mu::appshell;
+
+static std::vector<QVariantMap> welcomeDialogData()
+{
+    QVariantMap welcome;
+    welcome.insert("title", muse::qtrc("appshell/welcome", "欢迎使用鼓乐熊Studio"));
+    welcome.insert("imageUrl", "qrc:/resources/welcomedialog/WhatsNew.png");
+    welcome.insert("description", muse::qtrc("appshell/welcome",
+                                              "鼓乐熊Studio 是 DB Score 课程的专用教学播放器，用于打开教师分配的课程与鼓谱。"));
+    welcome.insert("buttonText", muse::qtrc("appshell/welcome", "下载最新版"));
+    welcome.insert("destinationUrl", "https://drumbear.cn/download");
+
+    QVariantMap create;
+    create.insert("title", muse::qtrc("appshell/welcome", "课程、鼓谱与课件一起播放"));
+    create.insert("imageUrl", "qrc:/resources/welcomedialog/ExploreTutorials.png");
+    create.insert("description", muse::qtrc("appshell/welcome",
+                                            "登录后可学习已开通的课程，并查看课程内的图片、音频、视频、PDF、PPT 和互动鼓谱。"));
+    create.insert("buttonText", muse::qtrc("appshell/welcome", "下载最新版"));
+    create.insert("destinationUrl", "https://drumbear.cn/download");
+
+    //! NOTE: This is the order the above items will appear in the carousel
+    return { welcome, create };
+}
+
+WelcomeDialogModel::WelcomeDialogModel()
+    : muse::Contextable(muse::iocCtxForQmlObject(this))
+{
+}
+
+void WelcomeDialogModel::init()
+{
+    IF_ASSERT_FAILED(configuration()) {
+        return;
+    }
+
+    m_items = welcomeDialogData();
+
+    m_currentIndex = configuration()->welcomeDialogLastShownIndex();
+    nextItem();
+
+    IF_ASSERT_FAILED(m_currentIndex != muse::nidx) {
+        m_currentIndex = 0;
+    }
+    configuration()->setWelcomeDialogLastShownIndex(static_cast<int>(m_currentIndex));
+
+    emit itemsChanged();
+    emit currentItemChanged();
+}
+
+QVariantMap WelcomeDialogModel::currentItem() const
+{
+    if (m_items.empty()) {
+        return QVariantMap();
+    }
+    return m_items.at(m_currentIndex);
+}
+
+void WelcomeDialogModel::nextItem()
+{
+    IF_ASSERT_FAILED(!m_items.empty()) {
+        return;
+    }
+
+    if (hasNext()) {
+        ++m_currentIndex;
+    } else {
+        // Cycle to first...
+        m_currentIndex = 0;
+    }
+    configuration()->setWelcomeDialogLastShownIndex(static_cast<int>(m_currentIndex));
+
+    emit currentItemChanged();
+}
+
+void WelcomeDialogModel::prevItem()
+{
+    IF_ASSERT_FAILED(!m_items.empty()) {
+        return;
+    }
+
+    if (hasPrev()) {
+        --m_currentIndex;
+    } else {
+        // Cycle to last....
+        m_currentIndex = count() - 1;
+    }
+    configuration()->setWelcomeDialogLastShownIndex(static_cast<int>(m_currentIndex));
+
+    emit currentItemChanged();
+}
+
+bool WelcomeDialogModel::showOnStartup() const
+{
+    return configuration()->welcomeDialogShowOnStartup();
+}
+
+void WelcomeDialogModel::setShowOnStartup(bool show)
+{
+    if (show == showOnStartup()) {
+        return;
+    }
+
+    configuration()->setWelcomeDialogShowOnStartup(show);
+    emit showOnStartupChanged();
+}
