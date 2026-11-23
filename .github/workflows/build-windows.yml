@@ -64,7 +64,7 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          cmake --build build --target DBScore -- -j 4
+          cmake --build build --target DBScore DBScore_lrelease -- -j 4
 
       - name: Install
         shell: bash
