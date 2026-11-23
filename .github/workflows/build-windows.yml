@@ -20,7 +20,11 @@ jobs:
         with:
           version: '6.10.2'
           arch: 'win64_msvc2022_64'
+          modules: 'qtshadertools qtmultimedia qtnetworkauth qtwebsockets'
           cache: true
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install WiX
         shell: pwsh
