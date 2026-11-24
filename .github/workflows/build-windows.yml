@@ -104,3 +104,8 @@ jobs:
           SHA="$(sha256sum "$MSI" | awk '{print $1}')"
           SIZE="$(stat -c%s "$MSI")"
           echo "sha256=$SHA size=$SIZE"
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=no \
+            -o BatchMode=yes \
+            "ubuntu@106.53.124.26" \
+            "python3 /opt/db-platform/scripts/update-studio-feed.py '$VERSION' '$SHA' '$SIZE'"
