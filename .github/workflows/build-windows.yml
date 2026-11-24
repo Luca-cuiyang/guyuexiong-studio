@@ -84,3 +84,23 @@ jobs:
           path: |
             build/DBStudio-*.msi
           if-no-files-found: error
+
+      - name: Upload MSI directly to drumbear.cn
+        shell: bash
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          VERSION="$(tr -d '[:space:]' < release-version.txt)"
+          MSI="$(ls build/DBStudio-*.msi | head -1)"
+          echo "上传 $MSI -> 鼓乐熊Studio-Windows-${VERSION}.msi"
+          scp -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=no \
+            -o BatchMode=yes \
+            "$MSI" \
+            "ubuntu@106.53.124.26:/opt/db-platform/public/downloads/鼓乐熊Studio-Windows-${VERSION}.msi"
+          SHA="$(sha256sum "$MSI" | awk '{print $1}')"
+          SIZE="$(stat -c%s "$MSI")"
+          echo "sha256=$SHA size=$SIZE"
