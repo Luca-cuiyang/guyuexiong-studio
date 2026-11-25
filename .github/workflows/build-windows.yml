@@ -2,12 +2,25 @@ name: Build Windows MSI
 
 on:
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: '打包完成后直传 drumbear.cn 并更新软件内更新源: on - 直传'
+        default: 'on'
+        required: false
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-windows:
-    runs-on: windows-2025
+  windows:
+    runs-on: self-hosted
     timeout-minutes: 120
     steps:
       - name: Checkout
@@ -15,97 +28,82 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: '6.10.2'
-          arch: 'win64_msvc2022_64'
-          modules: 'qt5compat qtshadertools qtmultimedia qtnetworkauth qtwebsockets'
-          cache: true
-
-      - name: Set up MSVC
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Install WiX
-        shell: pwsh
+      - name: Trust workspace for git
+        shell: bash
         run: |
-          choco install wixtoolset -y --no-progress
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/muse"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/muse_deps"
+
+      - name: Configure build
+        shell: bash
+        run: |
+          bash ./buildscripts/ci/tools/make_build_mode_env.sh -e "${{ github.event_name }}" -m stable
+          bash ./buildscripts/ci/tools/make_build_number.sh
+          echo "BUILD_NUMBER=$(cat ./build.artifacts/env/build_number.env)" >> "$GITHUB_ENV"
+
+      - name: Use pre-installed Qt (self-hosted)
+        shell: bash
+        run: |
+          echo "C:/Qt/6.10.2/msvc2022_64/bin" >> "$GITHUB_PATH"
+          echo "CMAKE_PREFIX_PATH=C:/Qt/6.10.2/msvc2022_64" >> "$GITHUB_ENV"
+
+      - name: Setup environment
+        shell: cmd
+        run: buildscripts\ci\windows\setup.bat
 
       - name: Download sound fonts
         shell: bash
         run: |
           mkdir -p share/sound
           cd share/sound
-          curl -fsSL -o "MS Basic.sf3" "https://drumbear.cn/downloads/soundfonts/MS%20Basic.sf3"
-          curl -fsSL -o "FluidR3_GM.sf2" "https://drumbear.cn/downloads/soundfonts/FluidR3_GM.sf2"
-          curl -fsSL -o "FluidR3Mono_GM.sf3" "https://drumbear.cn/downloads/soundfonts/FluidR3Mono_GM.sf3"
+          curl -fsSL --retry 3 -o "MS Basic.sf3" "https://drumbear.cn/downloads/soundfonts/MS%20Basic.sf3"
+          curl -fsSL --retry 3 -o "FluidR3_GM.sf2" "https://drumbear.cn/downloads/soundfonts/FluidR3_GM.sf2"
+          curl -fsSL --retry 3 -o "FluidR3Mono_GM.sf3" "https://drumbear.cn/downloads/soundfonts/FluidR3Mono_GM.sf3"
 
-      - name: Download FFmpeg DLLs
+      - name: Fetch FFmpeg runtime DLLs
         shell: bash
         run: |
           mkdir -p buildscripts/packaging/Windows/ffmpeg
-          cd buildscripts/packaging/Windows/ffmpeg
           for f in avcodec-62.dll avformat-62.dll avutil-60.dll swresample-6.dll swscale-9.dll; do
-            curl -fsSL -o "$f" "https://drumbear.cn/downloads/ffmpeg/$f"
+            curl -fsSL --retry 3 "https://drumbear.cn/downloads/ffmpeg/$f" -o "buildscripts/packaging/Windows/ffmpeg/$f"
           done
-
-      - name: Configure
-        shell: bash
-        run: |
-          cmake -S . -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR/lib/cmake" \
-            -DCMAKE_INSTALL_PREFIX=install \
-            -DLIB_ARCH=x86_64 \
-            -DMUE_RUN_WINDEPLOYQT=ON \
-            -DMUE_WINDEPLOY_QML_DIR="$(pwd)/buildscripts/packaging/Windows/deploy-qml" \
-            -DCPACK_WIX_ROOT="C:/Program Files (x86)/WiX Toolset v3.11"
+          ls -lh buildscripts/packaging/Windows/ffmpeg
 
       - name: Build
-        shell: bash
-        run: |
-          cmake --build build --target DBScore DBScore_lrelease museupdater -- -j 4
+        shell: cmd
+        run: buildscripts\ci\windows\build.bat -n %BUILD_NUMBER%
 
-      - name: Install
-        shell: bash
-        run: |
-          cmake --install build
+      - name: Package
+        shell: cmd
+        run: buildscripts\ci\windows\package.bat
 
-      - name: Package MSI
+      - name: Checksum
         shell: bash
-        run: |
-          cd build
-          cpack -G WIX -C Release
+        run: bash ./buildscripts/ci/tools/checksum.sh
 
-      - name: Upload MSI
+      - name: Upload artifacts on GitHub
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: guyuexiong-studio-windows
-          path: |
-            build/DBStudio-*.msi
-          if-no-files-found: error
+          path: build.artifacts/
+          if-no-files-found: ignore
 
-      - name: Upload MSI directly to drumbear.cn
+      - name: Deploy to drumbear.cn
+        if: ${{ github.event_name == 'push' || inputs.deploy == 'on' }}
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          GH_RUN_ID: ${{ github.run_id }}
+          UPLOAD_ARTIFACT_NAME: guyuexiong-studio-windows
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-        run: |
-          mkdir -p ~/.ssh
-          echo "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          VERSION="$(tr -d '[:space:]' < release-version.txt)"
-          MSI="$(ls build/DBStudio-*.msi | head -1)"
-          echo "上传 $MSI -> 鼓乐熊Studio-Windows-${VERSION}.msi"
-          scp -i ~/.ssh/deploy_key \
-            -o StrictHostKeyChecking=no \
-            -o BatchMode=yes \
-            "$MSI" \
-            "ubuntu@106.53.124.26:/opt/db-platform/public/downloads/鼓乐熊Studio-Windows-${VERSION}.msi"
-          SHA="$(sha256sum "$MSI" | awk '{print $1}')"
-          SIZE="$(stat -c%s "$MSI")"
-          echo "sha256=$SHA size=$SIZE"
-          ssh -i ~/.ssh/deploy_key \
-            -o StrictHostKeyChecking=no \
-            -o BatchMode=yes \
-            "ubuntu@106.53.124.26" \
-            "python3 /opt/db-platform/scripts/update-studio-feed.py '$VERSION' '$SHA' '$SIZE'"
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+          DEPLOY_DOWNLOAD_DIR: ${{ vars.DEPLOY_DOWNLOAD_DIR }}
+          DEPLOY_UPDATES_DIR: ${{ vars.DEPLOY_UPDATES_DIR }}
+          APP_NAME: 鼓乐熊Studio
+          OS: windows
+        run: bash ./buildscripts/ci/tools/deploy_to_drumbear.sh
