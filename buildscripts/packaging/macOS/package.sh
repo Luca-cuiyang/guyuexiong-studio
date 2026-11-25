@@ -215,6 +215,14 @@ if $DO_SIGN; then
     find "${APP_PATH}/Contents/Frameworks" -maxdepth 1 -type f -name "*.dylib" \
         -exec codesign --force --options runtime "${CODESIGN_TIMESTAMP_ARGS[@]}" \
         -s "$SIGN_IDENTITY" {} +
+    echo "Sign bundled frameworks"
+    find "${APP_PATH}/Contents/Frameworks" -maxdepth 1 -name "*.framework" \
+        -exec codesign --force --deep --options runtime "${CODESIGN_TIMESTAMP_ARGS[@]}" \
+        -s "$SIGN_IDENTITY" {} +
+    echo "Sign plugins"
+    find "${APP_PATH}/Contents/PlugIns" -name "*.dylib" \
+        -exec codesign --force --options runtime "${CODESIGN_TIMESTAMP_ARGS[@]}" \
+        -s "$SIGN_IDENTITY" {} +
     if [ -d "${APP_PATH}/Contents/Frameworks/ffmpeg" ]; then
         find "${APP_PATH}/Contents/Frameworks/ffmpeg" -maxdepth 1 -type f -name "*.dylib" \
             -exec codesign --force --options runtime "${CODESIGN_TIMESTAMP_ARGS[@]}" \
