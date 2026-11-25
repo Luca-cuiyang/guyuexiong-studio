@@ -23,23 +23,11 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 120
     steps:
-      - name: Bypass git mirror for studio repos
-        shell: bash
-        run: |
-          printf '%s\n' \
-            '[url "https://github.com/Luca-cuiyang/guyuexiong-studio"]' \
-            '  insteadof = https://github.com/Luca-cuiyang/guyuexiong-studio' \
-            '[url "https://github.com/Luca-cuiyang/muse_framework.git"]' \
-            '  insteadof = https://github.com/Luca-cuiyang/muse_framework.git' \
-            '[url "https://github.com/Luca-cuiyang/muse_deps.git"]' \
-            '  insteadof = https://github.com/Luca-cuiyang/muse_deps.git' \
-            > "$RUNNER_TEMP/gitconfig-studio"
-          echo "GIT_CONFIG_GLOBAL=$RUNNER_TEMP/gitconfig-studio" >> "$GITHUB_ENV"
-
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
 
       - name: Trust workspace for git
         shell: bash
