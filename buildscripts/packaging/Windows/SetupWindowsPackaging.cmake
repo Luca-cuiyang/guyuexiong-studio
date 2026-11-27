@@ -92,6 +92,11 @@ set(CPACK_WIX_EXTENSIONS "WixUtilExtension")
 #! 安装界面使用简体中文（WixUIExtension 内置 zh-CN）
 set(CPACK_WIX_CULTURES "zh-CN")
 
+#! NOTE: Skip the Windows Installer ICE validation (light.exe -sval). It needs
+#! the msiserver service, which idles out during the long self-hosted build and
+#! then makes packaging fail with "无法访问 Windows Installer 服务".
+set(CPACK_WIX_LIGHT_EXTRA_FLAGS "-sval")
+
 # Extra CPack variables
 list(APPEND CPACK_WIX_CANDLE_EXTRA_FLAGS
     "-dMUSE_APP_TITLE_VERSION=${MUSE_APP_NAME_HUMAN_READABLE}"
